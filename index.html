@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ドップラー効果 ステップ学習</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: 理科室の実験台。予想して、数えて、確かめる
+   IDEA: 記録タイマーのテープ＋波面を真上から見た図
+   PICTURE: 大きな波面アニメーションと、色付き打点の記録テープ
+   COLOUR and TYPE: 白い実験台・濃紺の帯・音源の橙／振動数はスペクトル色（低い=赤、高い=青紫）／BIZ UDPGothic
+   LAYOUT: 濃紺の帯（ステップ切替）→ 実験画面 → 操作と問い（広い画面では右列） */
+:root{color-scheme:light dark;
+--bg:light-dark(#ffffff,#0f1317);--ink:light-dark(#18212b,#e6ebf0);--mute:light-dark(#56616d,#9aa6b2);
+--band:light-dark(#14243a,#0a1624);--line:light-dark(#dde2e7,#2a323b);--card:light-dark(#f4f6f8,#171d23);
+--acc:#e8590c;--accink:#ffffff;--obs:light-dark(#1d3b8f,#7aa2ff);--ok:light-dark(#0b6e4f,#5fd3a6);--bad:light-dark(#b42318,#ff8a80)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "BIZ UDPGothic",system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:1240px;margin:0 auto;padding-inline:max(4vw,14px)}
+.top{background:var(--band);color:#f2f5f8;padding:22px 0 14px}
+.top h1{font-size:clamp(24px,4vw,36px);line-height:1.15;margin:0 0 6px;text-wrap:balance}
+.top p{margin:0 0 14px;color:#c4cfdb;font-size:15px}
+.scroll{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.pill{flex:none;border:1px solid rgba(255,255,255,.25);background:transparent;color:#e6ecf2;border-radius:999px;padding:0 14px;min-height:40px;font:inherit;font-size:14px;cursor:pointer}
+.pill[aria-current=true]{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:700}
+.sthead{padding:18px 0 10px}
+.sthead h2{font-size:clamp(22px,3vw,30px);line-height:1.2;margin:0 0 6px}
+.sthead p{margin:0;max-width:70ch}
+.grid{display:grid;gap:18px;grid-template-columns:minmax(0,1fr);padding-bottom:40px}
+@media(min-width:960px){.grid{grid-template-columns:minmax(0,1fr) 370px}}
+.stage{position:relative;height:clamp(260px,52vw,500px);border-radius:12px;overflow:hidden;border:1px solid var(--line)}
+.stage canvas,.tapebox canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.tapebox{position:relative;height:190px;margin-top:10px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+button,.seg label{font:inherit}
+.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;font-size:15px}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:var(--accink);font-weight:700}
+.btn[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn:disabled{opacity:.45;cursor:default}
+button:focus-visible,input:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{min-height:44px;padding:0 12px;border:0;background:var(--card);color:var(--ink);cursor:pointer;font-size:14px}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg)}
+.chk{display:inline-flex;align-items:center;gap:8px;min-height:44px;font-size:15px;cursor:pointer}
+.chk input{width:20px;height:20px;accent-color:var(--acc)}
+.legend{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--mute);margin-top:4px;flex-wrap:wrap}
+.legend i{display:block;width:min(260px,50vw);height:10px;border-radius:5px;background:linear-gradient(90deg,hsl(0 78% 48%),hsl(65 78% 45%),hsl(130 78% 40%),hsl(200 78% 45%),hsl(270 70% 55%))}
+.meters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:12px}
+.meters div{background:var(--card);border-radius:10px;padding:10px 12px;position:relative}
+.meters span{display:block;font-size:13px;color:var(--mute)}
+.meters b{font-size:28px;font-variant-numeric:tabular-nums;line-height:1.2}
+.meters small{margin-left:4px;color:var(--mute);white-space:nowrap}
+.chip{display:inline-block;width:16px;height:16px;border-radius:50%;background:#888;margin-left:6px;vertical-align:middle}
+.lab #ctl{margin-top:10px}
+.lab #ctl:empty{display:none}
+body.textstep .lab,body.textstep #qa,body.textstep #ctl{display:none}
+body.textstep .grid{grid-template-columns:minmax(0,1fr)}
+body.textstep .panel{max-width:520px}
+body.textstep .sthead{padding:48px 0 32px}
+body.textstep .sthead p{font-size:clamp(20px,2.8vw,28px);line-height:1.7;max-width:30em;margin-top:16px}
+.sw{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin-top:10px;padding:10px 12px;background:var(--card);border-radius:12px}
+.sw .swl{font-weight:700}
+.sw b{font-size:22px;font-variant-numeric:tabular-nums}
+.sw .swv{white-space:nowrap}
+.sw .swr{color:var(--mute);font-size:14px;width:100%}
+.theory{margin:12px 0 0;padding:12px 14px;border-left:4px solid var(--acc);background:var(--card);border-radius:0 10px 10px 0;min-height:1em}
+.theory:empty{display:none}
+.note{font-size:13px;color:var(--mute);margin:10px 0 0}
+.panel{display:flex;flex-direction:column;gap:16px}
+.box{background:var(--card);border-radius:12px;padding:14px 16px}
+.box h3{font-size:16px;margin:0 0 8px}
+.sl label{display:flex;justify-content:space-between;gap:8px;font-size:15px;flex-wrap:wrap}
+.sl output{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.sl input{width:100%;height:44px;accent-color:var(--acc)}
+.sl .ends{display:flex;justify-content:space-between;font-size:13px;color:var(--mute);margin-top:-6px}
+.sl+.sl{margin-top:10px}
+.choices{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.choice{text-align:left;min-height:44px;padding:8px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;font-size:15px}
+.choice[aria-pressed=true]{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.choice.right{border-color:var(--ok);box-shadow:inset 0 0 0 2px var(--ok)}
+.choice.wrong{border-color:var(--bad);box-shadow:inset 0 0 0 2px var(--bad)}
+.exp{margin:10px 0 0;line-height:1.7}
+.hint{font-size:13px;color:var(--mute);margin:6px 0 0}
+.formula{font-size:20px;text-align:center;padding:10px;background:var(--bg);border-radius:10px;margin-top:8px}
+.pn{display:flex;justify-content:space-between;gap:8px}
+.pn .btn{flex:1}
+@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <h1>ドップラー効果を「数えて」わかる</h1>
+    <p>耳に届く波面を数えながら、10のステップで進みます。予想 → 再生 → 解説の順に試してください。</p>
+    <nav class="scroll" id="nav" aria-label="ステップ"></nav>
+  </div>
+</header>
+<main class="wrap">
+  <section class="sthead"><h2 id="stTitle"></h2><p id="stLead"></p></section>
+  <div class="grid">
+    <div class="lab">
+      <div class="stage"><canvas id="cv" aria-label="音源から広がる波面のアニメーション"></canvas></div>
+      <div class="bar">
+        <button class="btn pri" id="play">一時停止</button>
+        <button class="btn" id="reset">最初から</button>
+        <div class="seg" id="spd" role="group" aria-label="再生速度">
+          <button data-s="0.5">0.5×</button><button data-s="1" aria-pressed="true">1×</button><button data-s="2">2×</button>
+        </div>
+        <button class="btn" id="snd" aria-pressed="false">音を鳴らす</button>
+        <label class="chk"><input type="checkbox" id="cen">波面の中心を表示</label>
+      </div>
+      <div class="sw" id="sw">
+        <span class="swl">ストップウォッチ</span>
+        <button class="btn pri" id="swGo" aria-pressed="false">スタート</button>
+        <button class="btn" id="swClr">リセット</button>
+        <span class="swv"><b id="swT">0.00</b> 秒</span>
+        <span class="swv">光った回数 <b id="swN">0</b> 回</span>
+        <span class="swr" id="swR"></span>
+      </div>
+      <div class="tapebox"><canvas id="tv" aria-label="記録テープと耳の振動数のグラフ"></canvas></div>
+      <div class="legend"><span>打点の色　低い音</span><i></i><span>高い音</span><span>（緑＝音源と同じ f）</span></div>
+      <div class="meters">
+        <div><span>前の1秒間（針の前の1周）に届いた波面</span><b id="rN">0</b><small>回</small></div>
+        <div><span>耳の振動数 f′（打点の間隔から）</span><b id="rF">—</b><small>Hz</small> <i class="chip" id="chip"></i></div>
+        <div><span>音源の振動数 f</span><b>2.00</b><small>Hz</small></div>
+        <div><span>観測者までの距離</span><b id="rD">0</b><small>m</small></div>
+      </div>
+      <p class="theory" id="rTh"></p>
+      <p class="note">この画面の世界：音速 V = 340 m/s、音源の振動数 f = 2.0 Hz、波長 λ = VT = 170 m。本物の音より振動数をずっと小さくして、波面を目で数えられるようにしています。方眼は1マス100 m。「音を鳴らす」では、330 Hz の音を f′/f 倍の高さで鳴らします。</p>
+    </div>
+    <aside class="panel">
+      <div id="ctl"></div>
+      <div class="box" id="qa"></div>
+      <div class="pn"><button class="btn" id="prev">← 前のステップ</button><button class="btn" id="next">次のステップ →</button></div>
+    </aside>
+  </div>
+</main>
+<script>
+{
+const V=340,F0=2,T=1/F0;
+const $=id=>document.getElementById(id);
+const cv=$('cv'),cx=cv.getContext('2d'),tv=$('tv'),tx=tv.getContext('2d');
+const FONT="'BIZ UDPGothic',system-ui,sans-serif";
+let W=300,H=200,TW=300,TH=190,DPR=1,K=0.1;
+let P={};
+function setPal(){
+  const t=document.documentElement.dataset.theme;
+  const d=t?t==='dark':matchMedia('(prefers-color-scheme: dark)').matches;
+  P=d?{dark:1,stage:'#151a20',grid:'rgba(255,255,255,.06)',axis:'rgba(255,255,255,.22)',front:'rgba(150,185,245,.62)',ink:'#e6ebf0',mute:'#9aa6b2',src:'#ff7a33',obs:'#7aa2ff',tape:'#2a2620',dot:'rgba(255,255,255,.45)',ann:'#ffd166',pill:'rgba(21,26,32,.85)'}
+     :{dark:0,stage:'#fbfaf6',grid:'rgba(20,36,58,.07)',axis:'rgba(20,36,58,.28)',front:'rgba(29,70,140,.55)',ink:'#18212b',mute:'#56616d',src:'#e8590c',obs:'#1d3b8f',tape:'#f3ecd8',dot:'rgba(20,36,58,.45)',ann:'#a8420a',pill:'rgba(251,250,246,.88)'};
+}
+setPal();
+const mo=new MutationObserver(setPal);mo.observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',setPal);
+
+function fcol(r){
+  if(!r||!isFinite(r))return P.dark?'#8a96a3':'#7a8591';
+  let k=Math.max(-1,Math.min(1,Math.log2(r)));
+  const h=k<0?130+k*130:130+k*140;
+  return `hsl(${h},78%,${P.dark?62:42}%)`;
+}
+const f2=v=>v.toFixed(2),m0=v=>Math.round(v);
+const sgn=v=>(v<0?'−':'')+Math.abs(v).toFixed(2);
+
+/* ---------- ステップ定義 ---------- */
+const STEPS=[
+{id:'basic',hide:1,nav:'0 基本',title:'0　耳は1秒間に何回ふるえる？',
+ lead:'音源は1秒間に2回振動し、そのたびに波面（音の山）を1枚出します。波面が耳に届くと耳が1回ふるえ、観測者が光ります。右上の時計は針の1周が1秒。光るたびに、そのときの針の位置に点が打たれます。',
+ q:'観測者は1秒間に何回光るでしょう？',ch:['1回','2回','4回'],ans:1,
+ exp:'2回です。音源が1秒間に出す波面の数と、耳が1秒間に受け取る波面の数は同じです。この「耳が1秒間にふるえる回数」が、聞こえる音の振動数です。時計の1周に入る点はいつも2つ。記録テープの打点が等間隔に並んでいることも確かめましょう。下のストップウォッチで「光った回数 ÷ 時間」を求めても、2回/秒になります。',
+ view:1200,setup(S){S.src={x:-600,y:0};S.obs={x:500,y:0}},
+ th:()=>'音源は1秒間に2回振動する → 波面を1秒間に2枚出す'},
+{id:'drag',hide:1,drag:1,nav:'1 動かす',title:'1　音源を動かしてみよう',
+ lead:'音源（橙）を指やマウスでドラッグして、近づけたり、遠ざけたり、横に動かしたりしてみよう。右上の時計の1周に入る点の数や、打点テープの間隔と色に注目。',
+ q:'音源を動かしたとき、1秒間に観測者の耳に届く波面の個数は変わりますか？',ch:['変わらない','変わる'],ans:1,
+ exp:'変わります。観測者に近づけるように動かすと時計の1周に入る点が増え、遠ざけると減ります。観測者に対して横向きに動かしたときは、ほとんど変わりません。音源は相変わらず1秒間に2回しか振動していないのに、耳がふるえる回数は変わる――これがドップラー効果です。',
+ view:1200,setup(S){S.src={x:-500,y:0};S.obs={x:500,y:0}}},
+{id:'text',text:1,nav:'2 ここから',title:'2　ここから原理へ',
+ lead:'では、なぜ変わるのか、どう変わるのかを波の原理を押さえながら学んでいこう。',
+ view:1200,setup(S){S.emit=false}},
+{id:'one',nav:'3 波面1枚',title:'3　1枚だけ出した波面',
+ lead:'「波面を1枚出す」を押してから、音源（橙）を指やマウスでドラッグして動かしてみよう。',
+ q:'音源を動かすと、すでに出た波面（円）はどうなる？',ch:['音源についていく','出た場所を中心に広がり続ける','音源の進む側がつぶれる'],ans:1,
+ exp:'一度出た波面は、空気（媒質）の中を媒質に対して一定の速さ V で広がります。音源がどう動いても、波面の中心は出た場所のままです。音源は波面を「その場に置いていく」だけです。',
+ view:900,drag:1,centers:1,noFreq:1,ctl:{emitOne:1},setup(S){S.emit=false;S.src={x:-200,y:0};S.obs={x:600,y:0}}},
+{id:'more',drag:1,dragConst:1,nav:'4 数を増やせ',title:'4　受け取る数を増やせ',
+ lead:'一度出た波面の速さは、媒質に対して一定でした。では、音源の動かし方だけで、耳が1秒間に受け取る波面の数をできるだけ増やすには？ 音源を指やマウスでドラッグすると、音源は指の方向へ一定の速さで進みます（速さはスライダーで決める）。いろいろな向きに動かして試そう。',
+ q:'音源をどう動かせば、受け取る数が増える？',ch:['観測者に近づける','観測者から遠ざける','どう動かしても変わらない'],ans:0,
+ exp:'近づけると増えます。では、なぜ増えたのか――画面のどこを見ればわかるでしょう？ 答えは観測者側の波面どうしの間隔です。波面の速さは V のままなので、間隔が狭いほど1秒間にたくさん届きます。次のステップで、この間隔を求めます。',
+ view:1200,ctl:{vs:[0.1,0.8,0.4]},setup(S){S.src={x:-700,y:0};S.obs={x:600,y:0}},
+ th:S=>`音源の速さ vₛ = ${m0(S.vs)} m/s（${f2(S.vs/V)}V）`},
+{id:'lam',nav:'5 波長',title:'5　波長はどれだけ縮む？',
+ lead:'「1周期すすめる」を押すと、音源が次の波面を出す瞬間で止まり、作図が出ます。1周期 T の間に、前の波面は VT、音源は vₛT 進みます。',
+ q:'音源の後ろ側の波面の間隔（波長）は？',ch:['(V − vₛ)T','VT','(V + vₛ)T'],ans:2,
+ exp:'前方は λ′ = VT − vₛT = (V − vₛ)T、後方は (V + vₛ)T です。観測者が静止していれば、届く波面の速さは V なので f′ = V/λ′ = V/(V − vₛ) · f。下の数値と、記録テープから求めた f′ を比べてみよう。',
+ view:520,ctl:{vs:[-0.8,0.8,0.4],stepP:1},setup(S){S.src={x:-420,y:0};S.obs={x:470,y:0};S.pauseAt=4*T},
+ th:(S,rv)=>`前方の波長 λ′ = (V − vₛ)T = ${m0((V-S.vs)*T)} m　${rv?`後方 (V + vₛ)T = ${m0((V+S.vs)*T)} m`:''}<br>f′ = V/λ′ = ${f2(V/((V-S.vs)*T))} Hz`},
+{id:'near',nav:'6 近づく間',title:'6　近づくあいだ、音の高さは？',
+ lead:'音源が観測者のそばを通り過ぎます。記録テープでは、打点の色が音の高さ（高いほど青紫）、打点の長さが音の大きさです。',
+ q:'近づいているあいだ、音の高さはどうなる？',ch:['だんだん高くなる','ずっと一定','だんだん低くなる'],ans:1,
+ exp:'一定です。近づくにつれて音は大きくなります（打点が長くなる）が、打点の間隔と色は変わりません。音の高さを決めるのは距離ではなく、観測者に向かう速さです。右上の時計の1周に入る点の数も、近づくあいだはずっと同じです。通り過ぎた瞬間に一気に低くなります。「観測者を線路から離す」をオンにすると、通過の前後でなめらかに変わる様子も見られます。',
+ view:1200,ctl:{vs:[0,0.8,0.4],offset:1},setup(S,o){S.src={x:-1100,y:0};S.obs={x:250,y:o.offset?140:0}},
+ th:(S,rv)=>rv?`近づくとき f′ = V/(V − vₛ)·f = ${f2(F0*V/(V-S.vs))} Hz　遠ざかるとき f′ = V/(V + vₛ)·f = ${f2(F0*V/(V+S.vs))} Hz`:`音源の速度 vₛ = ${m0(S.vs)} m/s`},
+{id:'obs',nav:'7 観測者',title:'7　観測者が動くと？',
+ lead:'今度は音源を止めて、観測者を動かします。右向き（音源→観測者の向き）を正とします。左へ動くと音源に近づきます。',
+ q:'観測者が音源に近づくとき、空気中の波面の間隔（波長）は？',ch:['短くなる','変わらない','長くなる'],ans:1,
+ exp:'変わりません（λ = VT）。観測者が波面に向かっていくので、波面とすれ違う速さが V − v₀ になり（近づくときは v₀ < 0 なので V より大きい）、1秒間に出会う波面が増えます。f′ = (V − v₀)/λ = (V − v₀)/V · f。音源が動くと「波長が変わる」、観測者が動くと「出会う速さが変わる」。原因が違います。',
+ view:1200,ctl:{vo:[-0.8,0.8,0]},setup(S){S.src={x:-900,y:0};S.obs={x:900,y:0}},
+ th:S=>`波長 λ = VT = 170 m（変わらない）<br>すれ違う速さ V − v₀ = ${m0(V-S.vo)} m/s → f′ = (V − v₀)/λ = ${f2((V-S.vo)/(V*T))} Hz`},
+{id:'sum',nav:'8 まとめ',title:'8　まとめ：両方が動く',
+ lead:'音源から観測者への向き（右向き）を正とします。2つのスライダーを動かして、公式の値と記録テープから求めた値を比べよう。',
+ q:'音源と観測者が、同じ向きに同じ速さで動くと、聞こえる音は？',ch:['高くなる','変わらない','低くなる'],ans:1,
+ exp:'変わりません。公式で v₀ = vₛ とすると f′ = f です（ただし風がなく、空気が静止していることが前提）。波長は縮みますが、観測者も同じだけ逃げるので、出会う回数は変わりません。',
+ formula:1,view:1200,ctl:{vs:[-0.8,0.8,0.3],vo:[-0.8,0.8,0],sup:1},setup(S){S.src={x:-1000,y:0};S.obs={x:700,y:0}},
+ th:S=>S.vs>=V?'音源が音速以上：波面が重なって衝撃波ができます。この公式は使えません。':`f′ = (V − v₀)/(V − vₛ)·f = (${m0(V-S.vo)})/(${m0(V-S.vs)}) × 2 = <b>${f2(F0*(V-S.vo)/(V-S.vs))} Hz</b>`},
+{id:'circ',nav:'9 円運動',title:'9　発展：円運動する音源',
+ lead:'音源が円周上を一定の速さで回ります。小さな輪は「今聞こえている音を出した位置」です。音源本体の位置とのずれに注目しよう。',
+ q:'いちばん高い音として聞こえるのは、音源がどこで出した音？',ch:['観測者に最も近い点','観測者へまっすぐ向かって進む点（接線の接点）','観測者から最も遠い点'],ans:1,
+ exp:'観測者に向かう速度成分 vₛcosθ が最大になる点、つまり観測者から引いた接線の接点で出した音です。音が届くまで時間がかかるので、その音が聞こえる瞬間、音源本体はすでに先へ進んでいます（輪と音源のずれ）。観測者を円の中心に置くと、距離が変わらないので振動数も変わりません。',
+ view:1200,ctl:{vs:[0.1,0.6,0.4],center:1,tangent:1},setup(S,o){S.mode='circle';S.C={x:-300,y:0};S.R=260;S.th=-Math.PI/2;S.obs=o.center?{x:-300,y:0}:{x:750,y:0}},
+ th:(S,rv,o)=>!rv?`音源の速さ vₛ = ${m0(S.vs)} m/s`:o.center?'観測者が円の中心：距離が一定なので f′ = f = 2.00 Hz':`最も高い音 V/(V − vₛ)·f = ${f2(F0*V/(V-S.vs))} Hz　最も低い音 V/(V + vₛ)·f = ${f2(F0*V/(V+S.vs))} Hz`}
+];
+
+/* ---------- 状態 ---------- */
+let step=0,run=true,speed=1,showC=false,sound=false,picked=null,revealed=false,drag=false;
+const U={vs:0,vo:0},O={offset:false,center:false,tangent:false,sup:false};
+function hid(){return STEPS[step].hide&&!revealed}
+let S;
+const SW={on:false,t0:0,t1:0,n:0};
+function swLabel(){$('swGo').textContent=SW.on?'ストップ':'スタート';$('swGo').setAttribute('aria-pressed',SW.on)}
+function reset(){
+  const st=STEPS[step];
+  S={t:0,fronts:[],arr:[],lastA:null,src:{x:0,y:0},obs:{x:0,y:0},vs:U.vs*V,vo:U.vo*V,emit:true,next:0,mode:'line',C:{x:0,y:0},R:1,th:0,heard:null,flash:null,pauseAt:null,atEmit:false,msg:''};
+  st.setup(S,O);
+  if(S.emit&&S.mode==='line'){
+    const d=Math.hypot(S.obs.x-S.src.x,S.obs.y-S.src.y),N=Math.ceil((d+300)/(V*T));let la=null;
+    for(let n=N;n>=1;n--){const te=-n*T,r=-te*V,h=r>=d;S.fronts.push({x:S.src.x,y:S.src.y,te,prev:r-d,hit:h});if(h)la=te+d/V}
+    S.lastA=la;
+  }
+  if(!st.ctl||!st.ctl.vs)S.vs=st.ctl&&st.ctl.vs?S.vs:0;
+  if(!st.ctl||!st.ctl.vo)S.vo=0;
+  SW.on=false;SW.t0=SW.t1=0;SW.n=0;swLabel();
+  run=!st.text;updPlay();
+}
+function addFront(x,y,te){
+  S.fronts.push({x,y,te,prev:-Math.hypot(S.obs.x-x,S.obs.y-y)-1e-9,hit:false});
+}
+function hit(ta,f,d){
+  f.hit=true;
+  const A=Math.max(.15,Math.min(1,180/Math.max(d,1)));
+  let fr=null;
+  if(S.lastA!==null&&!STEPS[step].noFreq){const g=Math.abs(ta-S.lastA);if(g>1e-4)fr=1/g}
+  S.lastA=ta;
+  S.arr.push({t:ta,f:fr,A});
+  if(SW.on&&ta>SW.t0)SW.n++;
+  S.flash={t:ta,f:fr,A};S.heard={x:f.x,y:f.y};
+  tone(fr,A);
+}
+function adv(dt){
+  const st=STEPS[step],p0={x:S.src.x,y:S.src.y},t0=S.t;
+  if(st.drag){S.vx=S.vy=0;if(drag&&S.tg){const dx=S.tg.x-S.src.x,dy=S.tg.y-S.src.y,d=Math.hypot(dx,dy),m=Math.min(d,(st.dragConst?S.vs:.8*V)*dt);if(d>1e-6){S.src.x+=dx/d*m;S.src.y+=dy/d*m;S.vx=dx/d*m/dt;S.vy=dy/d*m/dt}}}
+  else if(S.mode==='line'){S.src.x+=S.vs*dt;S.obs.x+=S.vo*dt}
+  else{S.th+=S.vs/S.R*dt;S.src.x=S.C.x+S.R*Math.cos(S.th);S.src.y=S.C.y+S.R*Math.sin(S.th)}
+  S.t+=dt;
+  for(const f of S.fronts){
+    if(f.hit)continue;
+    const r=V*(S.t-f.te),d=Math.hypot(S.obs.x-f.x,S.obs.y-f.y),df=r-d;
+    if(f.prev<0&&df>=0){const k=-f.prev/(df-f.prev);hit(S.t-dt*(1-k),f,d)}
+    f.prev=df;
+  }
+  if(S.emit)while(S.next<=S.t){
+    const k=(S.next-t0)/dt,x=p0.x+(S.src.x-p0.x)*k,y=p0.y+(S.src.y-p0.y)*k;
+    addFront(x,y,S.next);
+    if(S.pauseAt!==null&&S.next>=S.pauseAt-1e-9){
+      S.src.x=x;S.src.y=y;S.t=S.next;S.next+=T;S.pauseAt=null;S.atEmit=true;run=false;updPlay();return;
+    }
+    S.next+=T;
+  }
+  if(S.mode==='line'&&!st.drag){
+    const L=st.view-30;
+    if(Math.abs(S.src.x)>L||Math.abs(S.obs.x)>L){
+      S.src.x=Math.max(-L,Math.min(L,S.src.x));S.obs.x=Math.max(-L,Math.min(L,S.obs.x));
+      run=false;S.msg='画面の端に着きました。「最初から」でやり直せます';updPlay();
+    }
+  }
+  if(S.fronts.length>60)S.fronts=S.fronts.filter(f=>V*(S.t-f.te)<5000);
+  if(S.arr.length>200)S.arr=S.arr.filter(a=>a.t>S.t-12);
+}
+
+/* ---------- 音 ---------- */
+let ac=null,osc=null,gn=null;
+function tone(fr,A){
+  if(!sound||!ac)return;
+  const hz=Math.max(80,Math.min(3000,330*(fr?fr/F0:1)));
+  osc.frequency.setTargetAtTime(hz,ac.currentTime,.01);
+  gn.gain.setTargetAtTime(.12*A,ac.currentTime,.03);
+}
+function idle(){
+  if(!sound||!ac)return;
+  if(!run||S.lastA===null||S.t-S.lastA>1.2)gn.gain.setTargetAtTime(0,ac.currentTime,.05);
+}
+$('snd').addEventListener('click',()=>{
+  try{
+    if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();osc=ac.createOscillator();osc.type='triangle';gn=ac.createGain();gn.gain.value=0;osc.connect(gn).connect(ac.destination);osc.start()}
+    ac.resume();sound=!sound;
+    if(!sound)gn.gain.setTargetAtTime(0,ac.currentTime,.03);
+  }catch(e){sound=false}
+  $('snd').setAttribute('aria-pressed',sound);
+});
+
+/* ---------- 描画 ---------- */
+function fit(){
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  const r=cv.getBoundingClientRect();W=r.width;H=r.height;cv.width=W*DPR;cv.height=H*DPR;
+  const q=tv.getBoundingClientRect();TW=q.width;TH=q.height;tv.width=TW*DPR;tv.height=TH*DPR;
+}
+const ro=new ResizeObserver(fit);ro.observe(cv);ro.observe(tv);
+
+function tag(c,x,y,s,col){
+  c.font=`13px ${FONT}`;const w=c.measureText(s).width+10;
+  const lx=Math.max(2,Math.min(W-w-2,x-w/2));
+  c.fillStyle=P.pill;c.fillRect(lx,y-10,w,20);
+  c.fillStyle=col||P.ink;c.textAlign='left';c.textBaseline='middle';c.fillText(s,lx+5,y);
+}
+function arrow(c,x1,x2,y,s,both){
+  if(Math.abs(x2-x1)<3)return;
+  c.strokeStyle=P.ann;c.fillStyle=P.ann;c.lineWidth=2;
+  c.beginPath();c.moveTo(x1,y);c.lineTo(x2,y);c.stroke();
+  const head=(x,dir)=>{c.beginPath();c.moveTo(x,y);c.lineTo(x-dir*8,y-4);c.lineTo(x-dir*8,y+4);c.closePath();c.fill()};
+  const d=Math.sign(x2-x1);head(x2,d);if(both)head(x1,-d);
+  tag(c,(x1+x2)/2,y-14,s,P.ann);
+}
+function draw(){
+  const c=cx,st=STEPS[step];c.setTransform(DPR,0,0,DPR,0,0);
+  c.fillStyle=P.stage;c.fillRect(0,0,W,H);
+  K=W/(2*st.view);
+  const X=x=>W/2+x*K,Y=y=>H/2-y*K;
+  c.strokeStyle=P.grid;c.lineWidth=1;c.beginPath();
+  for(let x=-Math.ceil(st.view/100)*100;x<=st.view;x+=100){c.moveTo(X(x),0);c.lineTo(X(x),H)}
+  const ym=H/2/K;for(let y=-Math.ceil(ym/100)*100;y<=ym;y+=100){c.moveTo(0,Y(y));c.lineTo(W,Y(y))}
+  c.stroke();
+  c.strokeStyle=P.axis;
+  if(S.mode==='line'){c.beginPath();c.moveTo(0,Y(0));c.lineTo(W,Y(0));c.stroke()}
+  else{c.setLineDash([5,5]);c.beginPath();c.arc(X(S.C.x),Y(S.C.y),S.R*K,0,Math.PI*2);c.stroke();c.setLineDash([])}
+  c.strokeStyle=P.front;c.lineWidth=1.6;
+  for(const f of S.fronts){const r=V*(S.t-f.te)*K;if(r<=0)continue;c.beginPath();c.arc(X(f.x),Y(f.y),r,0,Math.PI*2);c.stroke()}
+  if(showC||st.centers){c.fillStyle=P.dot;for(const f of S.fronts){c.beginPath();c.arc(X(f.x),Y(f.y),2.6,0,Math.PI*2);c.fill()}}
+  if(st.id==='one'&&S.fronts.length){const f=S.fronts[S.fronts.length-1];c.strokeStyle=P.ann;c.lineWidth=2;c.beginPath();c.moveTo(X(f.x)-6,Y(f.y)-6);c.lineTo(X(f.x)+6,Y(f.y)+6);c.moveTo(X(f.x)+6,Y(f.y)-6);c.lineTo(X(f.x)-6,Y(f.y)+6);c.stroke();tag(c,X(f.x),Y(f.y)-22,'この波面の中心',P.ann)}
+  if(st.id==='circ'){
+    const dx=S.obs.x-S.C.x,dy=S.obs.y-S.C.y,D=Math.hypot(dx,dy);
+    if(O.tangent&&D>S.R){
+      const ph=Math.atan2(dy,dx),al=Math.acos(S.R/D);
+      for(const s of [1,-1]){
+        const a=ph+s*al,px=S.C.x+S.R*Math.cos(a),py=S.C.y+S.R*Math.sin(a);
+        c.strokeStyle=P.axis;c.setLineDash([4,4]);c.lineWidth=1.2;c.beginPath();c.moveTo(X(S.obs.x),Y(S.obs.y));c.lineTo(X(px),Y(py));c.stroke();c.setLineDash([]);
+        const vd=-Math.sin(a)*(S.obs.x-px)+Math.cos(a)*(S.obs.y-py);
+        c.fillStyle=P.ann;c.beginPath();c.arc(X(px),Y(py),4,0,Math.PI*2);c.fill();
+        tag(c,X(px),Y(py)+(py>0?-18:18),vd>0?'最も高い音を出す点':'最も低い音を出す点',P.ann);
+      }
+    }
+    if(S.heard){
+      c.strokeStyle=P.src;c.lineWidth=2;c.setLineDash([3,4]);c.beginPath();c.moveTo(X(S.heard.x),Y(S.heard.y));c.lineTo(X(S.obs.x),Y(S.obs.y));c.stroke();c.setLineDash([]);
+      c.beginPath();c.arc(X(S.heard.x),Y(S.heard.y),9,0,Math.PI*2);c.stroke();
+    }
+  }
+  if(st.id==='lam'&&S.atEmit&&S.fronts.length>=2){
+    const a=S.fronts[S.fronts.length-1],b=S.fronts[S.fronts.length-2],rb=V*(S.t-b.te),y0=Y(0),sh=W<600;
+    c.strokeStyle=P.axis;c.setLineDash([3,3]);c.lineWidth=1;c.beginPath();
+    for(const x of [b.x,b.x+rb,a.x,b.x-rb]){c.moveTo(X(x),y0-92);c.lineTo(X(x),y0+106)}c.stroke();c.setLineDash([]);
+    arrow(c,X(a.x),X(b.x+rb),y0-40,sh?'λ′':'λ′ = (V − vₛ)T',true);
+    arrow(c,X(b.x-rb),X(a.x),y0-76,sh?'後方':'後方 (V + vₛ)T',true);
+    arrow(c,X(b.x),X(b.x+rb),y0+62,'VT');
+    arrow(c,X(b.x),X(a.x),y0+98,'vₛT');
+  }
+  const sx=X(S.src.x),sy=Y(S.src.y),ox=X(S.obs.x),oy=Y(S.obs.y);
+  if(S.flash){const age=S.t-S.flash.t;if(age<.22){c.globalAlpha=1-age/.22;c.fillStyle=fcol(S.flash.f?S.flash.f/F0:null);c.beginPath();c.arc(ox,oy,14+20*S.flash.A,0,Math.PI*2);c.fill();c.globalAlpha=1}}
+  c.fillStyle=P.obs;c.beginPath();c.arc(ox,oy,10,0,Math.PI*2);c.fill();
+  c.strokeStyle=P.stage;c.lineWidth=2;c.beginPath();c.arc(ox+1,oy,5,-Math.PI*.6,Math.PI*.6);c.stroke();
+  if(S.mode==='line'&&Math.abs(S.vo)>1){c.strokeStyle=P.obs;c.fillStyle=P.obs;c.lineWidth=3;const L=S.vo/V*70;c.beginPath();c.moveTo(ox,oy);c.lineTo(ox+L,oy);c.stroke();c.beginPath();c.moveTo(ox+L+Math.sign(L)*6,oy);c.lineTo(ox+L,oy-5);c.lineTo(ox+L,oy+5);c.fill()}
+  c.fillStyle=P.src;c.beginPath();c.arc(sx,sy,10,0,Math.PI*2);c.fill();
+  c.strokeStyle=P.stage;c.lineWidth=1.6;for(const r of [3,6]){c.beginPath();c.arc(sx-3,sy,r,-.8,.8);c.stroke()}
+  if(drag&&S.tg){c.strokeStyle=P.src;c.globalAlpha=.5;c.setLineDash([3,4]);c.lineWidth=1.5;c.beginPath();c.moveTo(sx,sy);c.lineTo(X(S.tg.x),Y(S.tg.y));c.stroke();c.setLineDash([]);c.beginPath();c.arc(X(S.tg.x),Y(S.tg.y),6,0,Math.PI*2);c.stroke();c.globalAlpha=1}
+  {const vx=st.drag?(S.vx||0):S.vs,vy=st.drag?(S.vy||0):0,sv=Math.hypot(vx,vy);
+   if(S.mode==='line'&&sv>1){const ux=vx/sv,uy=-vy/sv,L=sv/V*70,ex=sx+ux*L,ey=sy+uy*L;c.strokeStyle=P.src;c.fillStyle=P.src;c.lineWidth=3;c.beginPath();c.moveTo(sx,sy);c.lineTo(ex,ey);c.stroke();c.beginPath();c.moveTo(ex+ux*7,ey+uy*7);c.lineTo(ex-uy*5,ey+ux*5);c.lineTo(ex+uy*5,ey-ux*5);c.fill()}}
+  c.font=`13px ${FONT}`;c.textAlign='center';c.textBaseline='top';
+  c.fillStyle=P.src;c.fillText('音源',sx,sy+16);c.fillStyle=P.obs;c.fillText('観測者',ox,oy+16);
+  dial(c);
+  let msg=S.msg;
+  if(st.id==='drag'&&!msg)msg=drag?'':'音源（橙）をドラッグして動かそう';
+  if(st.id==='more'&&!msg)msg=drag?'':'音源をドラッグ：指の方向へ一定の速さで進みます';
+  if(st.id==='one'&&!msg)msg=S.fronts.length?'音源（橙）をドラッグして動かそう':'まず「波面を1枚出す」を押そう';
+  if(st.id==='lam'&&!msg)msg=S.atEmit?'波面を出した瞬間で停止中':'';
+  if(st.id==='circ'&&!msg)msg='橙の輪＝今聞こえている音を出した位置';
+  if(msg){c.font=`14px ${FONT}`;const w=c.measureText(msg).width+16;c.fillStyle=P.pill;c.fillRect(8,8,Math.min(w,W-16),26);c.fillStyle=P.ink;c.textAlign='left';c.textBaseline='middle';c.fillText(msg,16,21)}
+}
+function dial(c){
+  const r=W<520?28:40,x0=W-r-16,y0=r+16,t=S.t,sec=Math.floor(t),A0=-Math.PI/2;
+  c.fillStyle=P.pill;c.beginPath();c.arc(x0,y0,r+9,0,Math.PI*2);c.fill();
+  c.strokeStyle=P.axis;c.lineWidth=1.5;c.beginPath();c.arc(x0,y0,r,0,Math.PI*2);c.stroke();
+  for(let i=0;i<10;i++){const a=i/10*Math.PI*2+A0,l=i%5?4:8;c.beginPath();c.moveTo(x0+Math.cos(a)*(r-l),y0+Math.sin(a)*(r-l));c.lineTo(x0+Math.cos(a)*r,y0+Math.sin(a)*r);c.stroke()}
+  for(const s of S.arr){
+    const k=Math.floor(s.t);if((k!==sec&&k!==sec-1)||s.t>t)continue;
+    const a=(s.t-k)*Math.PI*2+A0;c.globalAlpha=k===sec?1:.28;c.fillStyle=fcol(s.f?s.f/F0:null);
+    c.beginPath();c.arc(x0+Math.cos(a)*r,y0+Math.sin(a)*r,r<35?4:5,0,Math.PI*2);c.fill();
+  }
+  c.globalAlpha=1;
+  const n=S.arr.filter(s=>Math.floor(s.t)===sec-1).length;
+  c.fillStyle=P.ink;c.font=`700 ${r<35?14:18}px ${FONT}`;c.textAlign='center';c.textBaseline='middle';
+  c.fillText(hid()?'?':sec>=1?n+'回':'—',x0,y0+r*.42);
+  const a=(t-sec)*Math.PI*2+A0;c.strokeStyle=P.src;c.lineWidth=2.5;c.beginPath();c.moveTo(x0,y0);c.lineTo(x0+Math.cos(a)*(r-5),y0+Math.sin(a)*(r-5));c.stroke();
+  c.fillStyle=P.src;c.beginPath();c.arc(x0,y0,3,0,Math.PI*2);c.fill();
+  tag(c,x0,y0+r+20,'1周＝1秒',P.mute);
+}
+function drawTape(){
+  const c=tx;c.setTransform(DPR,0,0,DPR,0,0);c.clearRect(0,0,TW,TH);
+  const L=TW<500?34:46,R=TW-6,top=2,th=48,gTop=th+20,gH=TH-gTop-22,win=10,t1=S.t,t0=t1-win;
+  const X=t=>L+(t-t0)/win*(R-L);
+  c.fillStyle=P.tape;c.fillRect(L,top,R-L,th);
+  c.font=`12px ${FONT}`;c.fillStyle=P.mute;c.textAlign='left';c.textBaseline='middle';
+  c.fillText('打点',2,top+th/2);
+  for(const a of S.arr){if(a.t<t0)continue;const x=X(a.t),h=6+(th-10)*a.A;c.fillStyle=fcol(a.f?a.f/F0:null);c.fillRect(x-2,top+th-3-h,4,h)}
+  let mx=6;for(const a of S.arr)if(a.t>=t0&&a.f)mx=Math.max(mx,Math.min(16,a.f*1.15));
+  mx=Math.ceil(mx/2)*2;
+  const Yg=f=>gTop+gH-Math.min(f,mx)/mx*gH;
+  c.strokeStyle=P.grid;c.lineWidth=1;c.beginPath();
+  for(let f=0;f<=mx;f+=2){c.moveTo(L,Yg(f));c.lineTo(R,Yg(f))}c.stroke();
+  c.fillStyle=P.mute;c.textAlign='right';
+  for(let f=0;f<=mx;f+=mx>8?4:2)c.fillText(f,L-6,Yg(f));
+  c.textAlign='left';c.fillText('f′/Hz',2,gTop-10);
+  c.strokeStyle=P.axis;c.setLineDash([5,4]);c.beginPath();c.moveTo(L,Yg(F0));c.lineTo(R,Yg(F0));c.stroke();c.setLineDash([]);
+  if(hid()){c.fillStyle=P.mute;c.textAlign='center';c.textBaseline='middle';c.font=`13px ${FONT}`;c.fillText('f′ の値とグラフは、解説を開くと表示されます',(L+R)/2,gTop+gH/2);return}
+  const pts=S.arr.filter(a=>a.t>=t0&&a.f);
+  c.strokeStyle=P.axis;c.lineWidth=1;c.beginPath();pts.forEach((a,i)=>{i?c.lineTo(X(a.t),Yg(a.f)):c.moveTo(X(a.t),Yg(a.f))});c.stroke();
+  for(const a of pts){c.fillStyle=fcol(a.f/F0);c.beginPath();c.arc(X(a.t),Yg(a.f),4,0,Math.PI*2);c.fill()}
+  c.fillStyle=P.mute;c.textBaseline='top';c.textAlign='left';c.fillText('← 10秒前',L,TH-16);c.textAlign='right';c.fillText('今',R,TH-16);
+  c.textAlign='left';c.textBaseline='bottom';c.fillText('音源の f',L+4,Yg(F0)-2);
+}
+let lastTh='';
+function readouts(){
+  const sec=Math.floor(S.t);$('rN').textContent=hid()?'?':sec>=1?S.arr.filter(a=>Math.floor(a.t)===sec-1).length:'—';
+  const end=SW.on?S.t:SW.t1,el=Math.max(0,end-SW.t0);
+  $('swT').textContent=el.toFixed(2);$('swN').textContent=SW.n;
+  $('swR').textContent=hid()?(el>=.5?'光った回数 ÷ 時間 で、1秒あたりの回数を自分で計算してみよう':'スタートして、光った回数と時間を測ろう。'):el>=.5?`${SW.n} 回 ÷ ${el.toFixed(2)} 秒 ＝ ${(SW.n/el).toFixed(2)} 回/秒（長く測るほど f′ に近づく）`:'スタートして、光った回数と時間から「1秒あたりの回数」を求めよう。時間はこの世界の時間なので、0.5×再生でも正しく測れます。';
+  let lf=null;for(let i=S.arr.length-1;i>=0;i--)if(S.arr[i].f){lf=S.arr[i].f;break}
+  $('rF').textContent=hid()?'?':lf?f2(lf):'—';$('chip').style.background=hid()?fcol(null):fcol(lf?lf/F0:null);
+  $('rD').textContent=m0(Math.hypot(S.obs.x-S.src.x,S.obs.y-S.src.y));
+  const st=STEPS[step],h=st.th&&!hid()?st.th(S,revealed,O):'';
+  if(h!==lastTh){$('rTh').innerHTML=h;lastTh=h}
+}
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000)*speed;last=now;
+  if(run&&W>0){const n=Math.max(1,Math.ceil(dt*240)),h=dt/n;for(let i=0;i<n&&run;i++)adv(h)}
+  if(!STEPS[step].text){draw();drawTape();readouts()}idle();
+  requestAnimationFrame(frame);
+}
+
+/* ---------- UI ---------- */
+function updPlay(){$('play').textContent=run?'一時停止':'再生'}
+$('play').addEventListener('click',()=>{if(!run){S.msg='';S.atEmit=false;S.pauseAt=null;if(STEPS[step].view-30<Math.max(Math.abs(S.src.x),Math.abs(S.obs.x))&&S.mode==='line'&&!STEPS[step].drag){reset();return}}run=!run;updPlay()});
+$('reset').addEventListener('click',reset);
+$('swGo').addEventListener('click',()=>{if(!SW.on){SW.t0=S.t;SW.t1=S.t;SW.n=0;SW.on=true}else{SW.t1=S.t;SW.on=false}swLabel()});
+$('swClr').addEventListener('click',()=>{SW.on=false;SW.t0=SW.t1=S.t;SW.n=0;swLabel()});
+$('spd').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;speed=+b.dataset.s;for(const x of $('spd').children)x.setAttribute('aria-pressed',x===b)});
+$('cen').addEventListener('change',e=>{showC=e.target.checked});
+
+function slider(id,label,r,endL,endR){
+  return `<div class="sl"><label for="s_${id}"><span>${label}</span><output id="o_${id}"></output></label><input type="range" id="s_${id}" min="${r[0]}" max="${r[1]}" step="0.05" value="${U[id]}"><div class="ends"><span>${endL}</span><span>${endR}</span></div></div>`;
+}
+function outTxt(id){const v=U[id];$('o_'+id).textContent=`${sgn(v)}V（${m0(v*V)} m/s）`}
+function buildPanel(){
+  const st=STEPS[step],c=st.ctl||{};
+  document.body.classList.toggle('textstep',!!st.text);
+  $('stTitle').textContent=st.title;$('stLead').textContent=st.lead;
+  for(const b of $('nav').children)b.setAttribute('aria-current',+b.dataset.i===step);
+  if(c.vs)U.vs=c.vs[2];if(c.vo)U.vo=c.vo[2];
+  let h='';
+  if(c.vs||c.vo||c.emitOne||c.stepP||c.offset||c.center||c.sup){
+    h+='<div class="box"><h3>操作</h3>';
+    if(c.emitOne)h+='<button class="btn pri" id="b_emit" style="width:100%">波面を1枚出す</button>';
+    if(c.vs)h+=slider('vs',st.id==='circ'?'音源の速さ vₛ':st.dragConst?'音源の速さ vₛ（指の方向へ進む）':'音源の速度 vₛ',[c.vs[0],O.sup&&c.sup?1.5:c.vs[1]],c.vs[0]<0?'← 遠ざかる':'',st.id==='circ'||st.dragConst?'速い →':'観測者へ近づく →');
+    if(c.vo)h+=slider('vo','観測者の速度 v₀',c.vo,'← 音源へ近づく','遠ざかる →');
+    if(c.stepP)h+='<button class="btn pri" id="b_step" style="width:100%;margin-top:10px">1周期すすめる</button>';
+    if(c.offset)h+=`<label class="chk"><input type="checkbox" id="k_offset" ${O.offset?'checked':''}>観測者を線路から離す</label>`;
+    if(c.center)h+=`<label class="chk"><input type="checkbox" id="k_center" ${O.center?'checked':''}>観測者を円の中心に置く</label>`;
+    if(c.tangent)h+=`<label class="chk"><input type="checkbox" id="k_tangent" ${O.tangent?'checked':''}>観測者からの接線を表示</label>`;
+    if(c.sup)h+=`<label class="chk"><input type="checkbox" id="k_sup" ${O.sup?'checked':''}>発展：音源の上限を 1.5V にする</label>`;
+    h+='</div>';
+  }
+  $('ctl').innerHTML=h;
+  for(const id of ['vs','vo'])if($('s_'+id)){outTxt(id);$('s_'+id).addEventListener('input',e=>{U[id]=+e.target.value;S[id]=U[id]*V;outTxt(id)})}
+  if($('b_emit'))$('b_emit').addEventListener('click',()=>{addFront(S.src.x,S.src.y,S.t);run=true;updPlay()});
+  if($('b_step'))$('b_step').addEventListener('click',()=>{S.msg='';S.atEmit=false;S.pauseAt=S.next;run=true;updPlay()});
+  for(const k of ['offset','center','tangent','sup'])if($('k_'+k))$('k_'+k).addEventListener('change',e=>{
+    O[k]=e.target.checked;
+    if(k==='sup'){const s=$('s_vs');s.max=O.sup?1.5:0.8;U.vs=Math.min(U.vs,+s.max);s.value=U.vs;S.vs=U.vs*V;outTxt('vs')}
+    if(k==='offset'||k==='center')reset();
+  });
+  picked=null;revealed=false;buildQ();
+  $('prev').disabled=step===0;$('next').disabled=step===STEPS.length-1;
+}
+function buildQ(){
+  const st=STEPS[step];
+  if(!st.q){$('qa').innerHTML='';return}
+  let h=`<h3>予想しよう</h3><p style="margin:0">${st.q}</p><div class="choices">`;
+  st.ch.forEach((s,i)=>{let cl='choice';if(revealed&&i===st.ans)cl+=' right';else if(revealed&&i===picked)cl+=' wrong';h+=`<button class="${cl}" data-i="${i}" aria-pressed="${i===picked}">${revealed&&i===st.ans?'✓ ':''}${s}</button>`});
+  h+='</div>';
+  if(!revealed)h+=`<button class="btn" id="b_rev" ${picked===null?'disabled':''} style="width:100%">再生して確かめたら → 解説を見る</button>${picked===null?'<p class="hint">まず選択肢を1つ選ぼう</p>':''}`;
+  else h+=`<p class="exp">${st.exp}</p>`;
+  if(st.formula)h+='<div class="formula">f′ = (V − v₀)/(V − vₛ) · f</div>';
+  $('qa').innerHTML=h;
+  $('qa').querySelectorAll('.choice').forEach(b=>b.addEventListener('click',()=>{if(revealed)return;picked=+b.dataset.i;buildQ()}));
+  if($('b_rev'))$('b_rev').addEventListener('click',()=>{revealed=true;if(STEPS[step].id==='circ'&&!O.tangent){O.tangent=true;const k=$('k_tangent');if(k)k.checked=true}buildQ()});
+}
+function go(i){
+  step=Math.max(0,Math.min(STEPS.length-1,i));
+  try{history.replaceState(null,'','#s'+step)}catch(e){}
+  buildPanel();reset();
+}
+$('nav').innerHTML=STEPS.map((s,i)=>`<button class="pill" data-i="${i}">${s.nav}</button>`).join('');
+$('nav').addEventListener('click',e=>{const b=e.target.closest('button');if(b)go(+b.dataset.i)});
+$('prev').addEventListener('click',()=>{go(step-1);window.scrollTo({top:0})});
+$('next').addEventListener('click',()=>{go(step+1);window.scrollTo({top:0})});
+window.addEventListener('hashchange',()=>{const mq=matchMedia('(min-width:960px)');
+function place(){if(mq.matches)document.querySelector('.panel').prepend($('ctl'));else document.querySelector('.bar').after($('ctl'))}
+mq.addEventListener('change',place);place();
+const m=location.hash.match(/^#s(\d)$/);if(m&&+m[1]!==step)go(+m[1])});
+
+function toW(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left-W/2)/K,y:-(e.clientY-r.top-H/2)/K}}
+cv.addEventListener('pointerdown',e=>{
+  if(!STEPS[step].drag)return;const p=toW(e);
+  if(Math.hypot(p.x-S.src.x,p.y-S.src.y)*K<34){drag=true;S.tg={x:S.src.x,y:S.src.y};cv.setPointerCapture(e.pointerId);e.preventDefault()}
+});
+cv.addEventListener('pointermove',e=>{
+  if(!drag)return;const p=toW(e),vw=STEPS[step].view-20,vh=H/2/K-20;
+  S.tg={x:Math.max(-vw,Math.min(vw,p.x)),y:Math.max(-vh,Math.min(vh,p.y))};
+});
+const endDrag=()=>{drag=false;if(S){S.tg=null;S.vx=S.vy=0}};
+cv.addEventListener('pointerup',endDrag);cv.addEventListener('pointercancel',endDrag);
+function setTouch(){cv.style.touchAction=STEPS[step].drag?'none':'auto'}
+
+const mq=matchMedia('(min-width:960px)');
+function place(){if(mq.matches)document.querySelector('.panel').prepend($('ctl'));else document.querySelector('.bar').after($('ctl'))}
+mq.addEventListener('change',place);place();
+const m=location.hash.match(/^#s(\d)$/);
+step=m?+m[1]:0;
+buildPanel();reset();setTouch();
+$('nav').addEventListener('click',setTouch);$('prev').addEventListener('click',setTouch);$('next').addEventListener('click',setTouch);
+fit();
+requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>
